@@ -655,21 +655,19 @@ CFE_Status_t CF_CFDP_RecvPh(uint8 chan_num, CF_Logical_PduBuffer_t *ph)
         ++CF_AppData.hk.Payload.channel_hk[chan_num].counters.recv.error;
         ret = CF_ERROR;
     }
-    /*
-     * The "large file" flag is not supported by this implementation yet.
-     * This means file sizes and offsets will be 64 bits, so codec routines
-     * will need to be updated to understand this.  OSAL also doesn't support
-     * 64-bit file access yet.
-     */
-    else if (CF_CODEC_IS_OK(ph->pdec) && ph->pdu_header.large_flag)
-    {
-        CFE_EVS_SendEvent(CF_PDU_LARGE_FILE_ERR_EID, CFE_EVS_EventType_ERROR,
-                          "CF: PDU with large file bit received (unsupported)");
-        ++CF_AppData.hk.Payload.channel_hk[chan_num].counters.recv.error;
-        ret = CF_ERROR;
-    }
     else
     {
+        /*
+         * The "large file" flag is not supported by this implementation yet.
+         * WORKAROUND: python-cfdp incorrectly sets this bit even for small files.
+         * Instead of rejecting, just clear the flag and log a warning.
+         */
+        if (CF_CODEC_IS_OK(ph->pdec) && ph->pdu_header.large_flag)
+        {
+            CFE_ES_WriteToSysLog("CF: PDU with large file bit received - clearing flag (workaround)\n");
+            ph->pdu_header.large_flag = 0;
+        }
+
         if (CF_CODEC_IS_OK(ph->pdec) && ph->pdu_header.pdu_type == 0)
         {
             CF_CFDP_DecodeFileDirectiveHeader(ph->pdec, &ph->fdirective);
@@ -754,6 +752,17 @@ CFE_Status_t CF_CFDP_RecvMd(CF_Transaction_t *txn, CF_Logical_PduBuffer_t *ph)
             }
             else
             {
+                /* Prepend rx_base_dir to relative destination filenames (no leading '/') */
+                if (txn->history->fnames.dst_filename[0] != '/' &&
+                    CF_AppData.config_table->rx_base_dir[0] != '\0')
+                {
+                    char tmp_path[sizeof(txn->history->fnames.dst_filename)];
+                    strncpy(tmp_path, txn->history->fnames.dst_filename, sizeof(tmp_path) - 1);
+                    tmp_path[sizeof(tmp_path) - 1] = '\0';
+                    snprintf(txn->history->fnames.dst_filename, sizeof(txn->history->fnames.dst_filename),
+                             "%s/%s", CF_AppData.config_table->rx_base_dir, tmp_path);
+                }
+
                 CFE_EVS_SendEvent(CF_PDU_MD_RECVD_INF_EID, CFE_EVS_EventType_INFORMATION,
                                   "CF R%d(%lu:%lu): md received, source: %s, dest: %s", CF_CFDP_GetPrintClass(txn),
                                   (unsigned long)txn->history->src_eid, (unsigned long)txn->history->seq_num,

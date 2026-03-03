@@ -97,7 +97,7 @@
  *
  */
 #define CF_MAX_PDU_SIZE         CF_INTERFACE_CFGVAL(MAX_PDU_SIZE)
-#define DEFAULT_CF_MAX_PDU_SIZE 512
+#define DEFAULT_CF_MAX_PDU_SIZE 1024
 
 /**
  *  @brief Maximum file name length.

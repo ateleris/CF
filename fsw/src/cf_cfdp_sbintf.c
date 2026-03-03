@@ -52,6 +52,11 @@
 #include <string.h>
 #include "cf_assert.h"
 
+/* Offset for CFDP PDU data within a raw CCSDS SpacePacket (6-byte primary header, no secondary).
+ * Used for output encoding so that external entities (e.g. python-cfdp MCS) can parse
+ * the PDU directly after the CCSDS primary header without cFE secondary header overhead. */
+#define CF_RAW_SPACEPACKET_PDU_OFFSET 6
+
 /*----------------------------------------------------------------
  *
  * Application-scope internal function
@@ -98,7 +103,7 @@ CF_Logical_PduBuffer_t *CF_CFDP_MsgOutGet(const CF_Transaction_t *txn, bool sile
         /* Allocate message buffer on success */
         if (os_status == OS_SUCCESS)
         {
-            CF_AppData.engine.out.msg = CFE_SB_AllocateMessageBuffer(offsetof(CF_PduTlmMsg_t, ph) + CF_MAX_PDU_SIZE +
+            CF_AppData.engine.out.msg = CFE_SB_AllocateMessageBuffer(CF_RAW_SPACEPACKET_PDU_OFFSET + CF_MAX_PDU_SIZE +
                                                                      CF_PDU_ENCAPSULATION_EXTRA_TRAILING_BYTES);
         }
 
@@ -116,7 +121,7 @@ CF_Logical_PduBuffer_t *CF_CFDP_MsgOutGet(const CF_Transaction_t *txn, bool sile
         {
             CFE_MSG_Init(&CF_AppData.engine.out.msg->Msg,
                          CFE_SB_ValueToMsgId(CF_AppData.config_table->chan[txn->chan_num].mid_output),
-                         offsetof(CF_PduTlmMsg_t, ph));
+                         CF_RAW_SPACEPACKET_PDU_OFFSET);
             ++chan->outgoing_counter; /* even if max_outgoing_messages_per_wakeup is 0 (unlimited), it's ok
                                                     to inc this */
 
@@ -135,8 +140,8 @@ CF_Logical_PduBuffer_t *CF_CFDP_MsgOutGet(const CF_Transaction_t *txn, bool sile
     else
     {
         /* if returning a buffer, then reset the encoder state to point to the beginning of the encapsulation msg */
-        CF_CFDP_EncodeStart(&CF_AppData.engine.out.encode, CF_AppData.engine.out.msg, ret, offsetof(CF_PduTlmMsg_t, ph),
-                            offsetof(CF_PduTlmMsg_t, ph) + CF_MAX_PDU_SIZE);
+        CF_CFDP_EncodeStart(&CF_AppData.engine.out.encode, CF_AppData.engine.out.msg, ret, CF_RAW_SPACEPACKET_PDU_OFFSET,
+                            CF_RAW_SPACEPACKET_PDU_OFFSET + CF_MAX_PDU_SIZE);
     }
 
     return ret;
@@ -156,13 +161,14 @@ void CF_CFDP_Send(uint8 chan_num, const CF_Logical_PduBuffer_t *ph)
 
     /* now handle the SB encapsulation - this should reflect the
      * length of the entire message, including encapsulation */
-    sb_msgsize = offsetof(CF_PduTlmMsg_t, ph);
+    sb_msgsize = CF_RAW_SPACEPACKET_PDU_OFFSET;
     sb_msgsize += ph->pdu_header.header_encoded_length;
     sb_msgsize += ph->pdu_header.data_encoded_length;
     sb_msgsize += CF_PDU_ENCAPSULATION_EXTRA_TRAILING_BYTES;
 
     CFE_MSG_SetSize(&CF_AppData.engine.out.msg->Msg, sb_msgsize);
-    CFE_MSG_SetMsgTime(&CF_AppData.engine.out.msg->Msg, CFE_TIME_GetTime());
+    /* Skip CFE_MSG_SetMsgTime - output uses raw CCSDS header without secondary header,
+     * so SetMsgTime would corrupt the CFDP PDU data at offset 6. */
     CFE_SB_TransmitBuffer(CF_AppData.engine.out.msg, true);
 
     ++CF_AppData.hk.Payload.channel_hk[chan_num].counters.sent.pdu;
@@ -209,14 +215,25 @@ void CF_CFDP_ReceiveMessage(CF_Channel_t *chan)
             /* bad message size - not supposed to happen */
             msg_size = 0;
         }
-        if (msg_type == CFE_MSG_Type_Tlm)
+        /* Check if secondary header is present to determine PDU offset */
+        bool   has_secondary = false;
+        size_t pdu_offset;
+        CFE_MSG_GetHasSecondaryHeader(&bufptr->Msg, &has_secondary);
+        if (!has_secondary)
         {
-            CF_CFDP_DecodeStart(&CF_AppData.engine.in.decode, bufptr, ph, offsetof(CF_PduTlmMsg_t, ph), msg_size);
+            /* No secondary header - CFDP PDU starts after 6-byte CCSDS primary header */
+            pdu_offset = 6;
+        }
+        else if (msg_type == CFE_MSG_Type_Tlm)
+        {
+            pdu_offset = offsetof(CF_PduTlmMsg_t, ph);
         }
         else
         {
-            CF_CFDP_DecodeStart(&CF_AppData.engine.in.decode, bufptr, ph, offsetof(CF_PduCmdMsg_t, ph), msg_size);
+            pdu_offset = offsetof(CF_PduCmdMsg_t, ph);
         }
+
+        CF_CFDP_DecodeStart(&CF_AppData.engine.in.decode, bufptr, ph, pdu_offset, msg_size);
 
         /* Identify and dispatch this PDU */
         CF_CFDP_ReceivePdu(chan, ph);

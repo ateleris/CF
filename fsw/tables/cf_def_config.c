@@ -28,7 +28,7 @@
 CF_ConfigTable_t CF_config_table = {
     10,    /* ticks_per_second */
     16384, /* max number of bytes per wakeup to calculate r2 recv file CRC */
-    25,    /* local entity id */
+    2,    /* local entity id */
     {      /* channel configuration for CF_NUM_CHANNELS */
      {
          /* channel 0 */
@@ -39,8 +39,8 @@ CF_ConfigTable_t CF_config_table = {
          30,     /* inactivity timer */
          4,      /* ACK limit */
          4,      /* NAK limit */
-         0x18c8, /* input message id */
-         0x08c2, /* output message id */
+         0x10c8, /* input message id (no secondary header flag set) */
+         0x00c8, /* output message id (no secondary header, APID=200, TLM type) */
          16,     /* input pipe depth */
          {       /* polling directory configuration for CF_MAX_POLLING_DIR_PER_CHAN */
           {
@@ -48,7 +48,7 @@ CF_ConfigTable_t CF_config_table = {
               5,               /* interval seconds */
               25,              /* priority */
               CF_CFDP_CLASS_2, /* class to send */
-              23,              /* destination entity id */
+              1,              /* destination entity id */
               "/cf/poll_dir",  /* source directory */
               "./poll_dir",    /* destination directory */
               0                /* polling directory enable flag (1 = enabled) */
@@ -78,8 +78,9 @@ CF_ConfigTable_t CF_config_table = {
       "", /* throttle sem, empty string means no throttle */
       1,  /* dequeue enable flag (1 = enabled) */
       .move_dir = ""}},
-    480,        /* outgoing_file_chunk_size */
-    "/cf/tmp",  /* temporary file directory */
-    "/cf/fail", /* Stores failed tx file for "polling directory" */
+    970,           /* outgoing_file_chunk_size */
+    "/cf/cf_tmp",  /* temporary file directory */
+    "/cf/cf_fail", /* Stores failed tx file for "polling directory" */
+    "/cf",         /* rx_base_dir: prepended to relative RX destination filenames */
 };
 CFE_TBL_FILEDEF(CF_config_table, CF.config_table, CF config table, cf_def_config.tbl)
