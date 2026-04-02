@@ -1160,8 +1160,9 @@ CFE_Status_t CF_CFDP_InitEngine(void)
 
     memset(&CF_AppData.engine, 0, sizeof(CF_AppData.engine));
 
-    /* Ensure that the temp directory exists (ignore error if it already exists) */
+    /* Ensure that the temp and rx directories exist (ignore error if they already exist) */
     OS_mkdir(CF_AppData.config_table->tmp_dir, 0);
+    OS_mkdir(CF_AppData.config_table->rx_base_dir, 0);
 
     for (i = 0; i < CF_NUM_CHANNELS; ++i)
     {

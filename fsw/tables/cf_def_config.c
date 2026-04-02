@@ -27,7 +27,7 @@
 
 CF_ConfigTable_t CF_config_table = {
     10,    /* ticks_per_second */
-    16384, /* max number of bytes per wakeup to calculate r2 recv file CRC */
+    1048576, /* max number of bytes per wakeup to calculate r2 recv file CRC */
     2,    /* local entity id */
     {      /* channel configuration for CF_NUM_CHANNELS */
      {
@@ -81,6 +81,6 @@ CF_ConfigTable_t CF_config_table = {
     970,           /* outgoing_file_chunk_size */
     "/cf/cf_tmp",  /* temporary file directory */
     "/cf/cf_fail", /* Stores failed tx file for "polling directory" */
-    "/cf",         /* rx_base_dir: prepended to relative RX destination filenames */
+    "/cf/upload",  /* rx_base_dir: prepended to relative RX destination filenames */
 };
 CFE_TBL_FILEDEF(CF_config_table, CF.config_table, CF config table, cf_def_config.tbl)
