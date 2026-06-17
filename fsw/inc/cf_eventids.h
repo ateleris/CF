@@ -1577,6 +1577,19 @@
  */
 #define CF_EID_INF_CFDP_BUF_EXCEED 166
 
+/**
+ * \brief CF Packet Error Control (PEC) CRC Check Failed Event ID
+ *
+ *  \par Type: ERROR
+ *
+ *  \par Cause:
+ *
+ *  An incoming CFDP space packet failed the 16-bit Packet Error Control
+ *  (CRC-16-CCITT, ECSS-E-ST-70-41C B.1.6) check, or was too small to contain
+ *  a PEC field.  The packet is dropped without being decoded.
+ */
+#define CF_PEC_ERR_EID 167
+
 /**\}*/
 
 #endif /* !CF_EVENTIDS_H */

@@ -137,8 +137,13 @@
  *       Maximum value is the difference between the maximum size of a CFDP PDU and the
  *       maximum size of an SB message.
  */
-#define CF_PDU_ENCAPSULATION_EXTRA_TRAILING_BYTES         CF_INTERFACE_CFGVAL(PDU_ENCAPSULATION_EXTRA_TRAILING_BYTES)
+#define CF_PDU_ENCAPSULATION_EXTRA_TRAILING_BYTES CF_INTERFACE_CFGVAL(PDU_ENCAPSULATION_EXTRA_TRAILING_BYTES)
+#if defined(CF_SPACEPACKET_PEC) && (CF_SPACEPACKET_PEC)
+/* Reserve 2 trailing octets for the CCSDS Packet Error Control (PEC) CRC-16. */
+#define DEFAULT_CF_PDU_ENCAPSULATION_EXTRA_TRAILING_BYTES 2
+#else
 #define DEFAULT_CF_PDU_ENCAPSULATION_EXTRA_TRAILING_BYTES 0
+#endif
 
 /**\}*/
 

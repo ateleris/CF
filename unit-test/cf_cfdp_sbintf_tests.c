@@ -23,6 +23,7 @@
 #include "cf_eventids.h"
 #include "cf_cfdp_sbintf.h"
 #include "cf_cfdp_pdu.h"
+#include "cf_pec.h"
 
 static union
 {
@@ -238,16 +239,38 @@ void Test_CF_CFDP_ReceiveMessage(void)
     UT_SetDataBuffer(UT_KEY(CFE_MSG_GetSize), &msg_size_buf, sizeof(msg_size_buf), false);
     UT_SetDataBuffer(UT_KEY(CFE_MSG_GetType), &msg_type, sizeof(msg_type), false);
     UtAssert_VOIDCALL(CF_CFDP_ReceiveMessage(chan));
+#if defined(CF_SPACEPACKET_PEC) && (CF_SPACEPACKET_PEC)
+    /* too small to hold a PEC field -> dropped by the Packet Error Control check */
+    UtAssert_STUB_COUNT(CF_CFDP_ReceivePdu, 0);
+    UT_CF_AssertEventID(CF_PEC_ERR_EID);
+    UtAssert_UINT32_EQ(CF_AppData.hk.Payload.channel_hk[UT_CFDP_CHANNEL].counters.recv.error, 1);
+#else
     UtAssert_STUB_COUNT(CF_CFDP_ReceivePdu, 1); /* should be dispatched, this function checks size */
+#endif
     UT_ResetState(UT_KEY(CFE_MSG_GetSize));
     UT_ResetState(UT_KEY(CFE_MSG_GetType));
 
     /*
-     *  Nonzero size, Cmd framing
+     *  Nonzero size, Cmd framing (when PEC is enabled, the stub returns a 0 syndrome -> OK)
      */
     UT_CFDP_SetupBasicTestState(UT_CF_Setup_RX, NULL, &chan, NULL, &txn, &config);
     UtAssert_VOIDCALL(CF_CFDP_ReceiveMessage(chan));
+#if defined(CF_SPACEPACKET_PEC) && (CF_SPACEPACKET_PEC)
+    UtAssert_STUB_COUNT(CF_CFDP_ReceivePdu, 1); /* zero-size case above was dropped, so this is #1 */
+
+    /*
+     *  Nonzero size but PEC CRC mismatch (stub returns non-zero syndrome) -> dropped
+     */
+    UT_CFDP_SetupBasicTestState(UT_CF_Setup_RX, NULL, &chan, NULL, &txn, &config);
+    UT_SetDefaultReturnValue(UT_KEY(CF_PEC_Calc), 0x1234);
+    UtAssert_VOIDCALL(CF_CFDP_ReceiveMessage(chan));
+    UtAssert_STUB_COUNT(CF_CFDP_ReceivePdu, 1); /* not incremented: packet dropped */
+    UT_CF_AssertEventID(CF_PEC_ERR_EID);
+    UtAssert_UINT32_EQ(CF_AppData.hk.Payload.channel_hk[UT_CFDP_CHANNEL].counters.recv.error, 2);
+    UT_SetDefaultReturnValue(UT_KEY(CF_PEC_Calc), 0);
+#else
     UtAssert_STUB_COUNT(CF_CFDP_ReceivePdu, 2); /* should be dispatched */
+#endif
 }
 
 void Test_CF_CFDP_Send(void)

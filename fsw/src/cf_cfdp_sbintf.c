@@ -52,6 +52,10 @@
 #include <string.h>
 #include "cf_assert.h"
 
+#if defined(CF_SPACEPACKET_PEC) && (CF_SPACEPACKET_PEC)
+#include "cf_pec.h"
+#endif
+
 /* Offset for CFDP PDU data within a raw CCSDS SpacePacket (6-byte primary header, no secondary).
  * Used for output encoding so that external entities (e.g. python-cfdp MCS) can parse
  * the PDU directly after the CCSDS primary header without cFE secondary header overhead. */
@@ -169,7 +173,27 @@ void CF_CFDP_Send(uint8 chan_num, const CF_Logical_PduBuffer_t *ph)
     CFE_MSG_SetSize(&CF_AppData.engine.out.msg->Msg, sb_msgsize);
     /* Skip CFE_MSG_SetMsgTime - output uses raw CCSDS header without secondary header,
      * so SetMsgTime would corrupt the CFDP PDU data at offset 6. */
+
+#if defined(CF_SPACEPACKET_PEC) && (CF_SPACEPACKET_PEC)
+    /* Append the 16-bit Packet Error Control (PEC) field (CRC-16-CCITT) per
+     * ECSS-E-ST-70-41C B.1.6.  The CRC covers the entire space packet except
+     * the two PEC octets, which are stored high byte first as the last two
+     * octets (already reserved in sb_msgsize via the trailing-byte count). */
+    {
+        uint8 *pec_base = (uint8 *)&CF_AppData.engine.out.msg->Msg;
+        uint16 pec_crc  = CF_PEC_Calc(pec_base, sb_msgsize - CF_PEC_SIZE_BYTES);
+
+        pec_base[sb_msgsize - 2] = (uint8)((pec_crc >> 8) & 0xFF);
+        pec_base[sb_msgsize - 1] = (uint8)(pec_crc & 0xFF);
+    }
+    /* Transmit WITHOUT origination so the Software Bus does not rewrite the CCSDS
+     * sequence count (CFE_MSG_SetSequenceCount) after the PEC has been computed -
+     * that would invalidate the CRC at the receiver. The sequence count is unused
+     * for raw CFDP encapsulation (the CFDP PDU carries its own sequencing). */
+    CFE_SB_TransmitBuffer(CF_AppData.engine.out.msg, false);
+#else
     CFE_SB_TransmitBuffer(CF_AppData.engine.out.msg, true);
+#endif
 
     ++CF_AppData.hk.Payload.channel_hk[chan_num].counters.sent.pdu;
 
@@ -205,6 +229,23 @@ void CF_CFDP_ReceiveMessage(CF_Channel_t *chan)
         CFE_ES_PerfLogEntry(CF_PERF_ID_PDURCVD(chan_num));
         CFE_MSG_GetSize(&bufptr->Msg, &msg_size);
         CFE_MSG_GetType(&bufptr->Msg, &msg_type);
+
+#if defined(CF_SPACEPACKET_PEC) && (CF_SPACEPACKET_PEC)
+        /* Verify the 16-bit Packet Error Control (PEC) field (CRC-16-CCITT)
+         * per ECSS-E-ST-70-41C B.1.6.  Running the CRC over the entire packet
+         * INCLUDING the two PEC octets yields a zero syndrome when error-free.
+         * On failure, drop the packet (do not decode) and count an error. */
+        if (msg_size < CF_PEC_SIZE_BYTES || CF_PEC_Calc((const uint8 *)&bufptr->Msg, msg_size) != 0)
+        {
+            ++CF_AppData.hk.Payload.channel_hk[chan_num].counters.recv.error;
+            CFE_EVS_SendEvent(CF_PEC_ERR_EID, CFE_EVS_EventType_ERROR,
+                              "CF: dropped received PDU on channel %d: bad packet error control (PEC) CRC",
+                              chan_num);
+            CFE_ES_PerfLogExit(CF_PERF_ID_PDURCVD(chan_num));
+            continue;
+        }
+#endif
+
         if (msg_size > CF_PDU_ENCAPSULATION_EXTRA_TRAILING_BYTES)
         {
             /* Ignore/subtract any fixed trailing bytes */

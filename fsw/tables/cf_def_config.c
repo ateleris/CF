@@ -39,8 +39,8 @@ CF_ConfigTable_t CF_config_table = {
          30,     /* inactivity timer */
          4,      /* ACK limit */
          4,      /* NAK limit */
-         0x10c8, /* input message id (no secondary header flag set) */
-         0x00c8, /* output message id (no secondary header, APID=200, TLM type) */
+         0x13e8, /* input message id (no secondary header, APID=1000, CMD type) */
+         0x03e8, /* output message id (no secondary header, APID=1000, TLM type) */
          16,     /* input pipe depth */
          {       /* polling directory configuration for CF_MAX_POLLING_DIR_PER_CHAN */
           {
