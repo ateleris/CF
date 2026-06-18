@@ -28,7 +28,7 @@
 CF_ConfigTable_t CF_config_table = {
     10,    /* ticks_per_second */
     1048576, /* max number of bytes per wakeup to calculate r2 recv file CRC */
-    2,    /* local entity id */
+    0,    /* local entity id */
     {      /* channel configuration for CF_NUM_CHANNELS */
      {
          /* channel 0 */
